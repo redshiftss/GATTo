@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.18.2", features = ["full"] }
 expectrl = "0.4.0"
+clap = { version = "3.1.18", features = ["derive"] }
+itertools = "0.10.3"
