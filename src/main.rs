@@ -1,6 +1,50 @@
+use std::str::FromStr;
+
 use clap::Parser;
+use expectrl::{
+    process::unix::{PtyStream, UnixProcess},
+    spawn, Error, Session,
+};
 use itertools::Itertools;
-use expectrl::{spawn, Error, process::unix::{UnixProcess, PtyStream}, Session};
+
+#[derive(Debug)]
+struct Rgb {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+impl FromStr for Rgb {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.strip_prefix('#').unwrap_or(s);
+        if s.len() != 6 {
+            return Err(String::from("invalid hex length"));
+        }
+
+        let a: Result<Vec<u8>, _> = s
+            .chars()
+            .chunks(2)
+            .into_iter()
+            .map(|mut n| u8::from_str_radix(&n.join(""), 16))
+            .collect();
+
+        let b = a.map_err(|_| String::from("invalid hex"))?;
+
+        Ok(Rgb {
+            r: b[0],
+            g: b[1],
+            b: b[2],
+        })
+    }
+}
+
+impl ToString for Rgb {
+    fn to_string(&self) -> String {
+        return format!("0x{:x} 0x{:x} 0x{:x}",self.r,self.g,self.b);
+    }
+} 
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -10,25 +54,34 @@ struct Args {
     mac: String,
     /// value to write
     #[clap(short, long)]
-    value: String
+    value: Rgb,
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error>{
+async fn main() -> Result<(), Error> {
     let args = Args::parse();
     let mac = args.mac;
+    let val = args.value;
     let mut kitty = spawn(format!("btgatt-client -d {mac}"))?;
-    
-    let val = args.value.chars().chunks(2).into_iter().map(|c| c.collect::<String>()).collect::<Vec<String>>();
-    
+
     kitty.expect("GATT discovery procedures complete")?;
     send_static_rgb(kitty, val);
 
     Ok(())
 }
 
-fn send_static_rgb(mut ses : Session<UnixProcess, PtyStream>, rgb : Vec<String>) {
-    let command = format!("write-value 0x000d 0xc3 0x00 0x03 0x{v1} 0x{v2} 0x{v3}", v1=rgb[0], v2=rgb[1], v3=rgb[2]);
+fn send_static_rgb(mut ses: Session<UnixProcess, PtyStream>, rgb: Rgb) {
+    dbg!(rgb.to_string());
+    let command = format!(
+        "write-value 0x000d 0xc3 0x00 0x03 {val}",
+        val = rgb.to_string()
+    );
+    ses.send_line(command).unwrap();
+    ses.expect("Write").unwrap();
+}
+
+fn send_rainbow(mut ses: Session<UnixProcess, PtyStream>) {
+    let command = "write-value 0x000d 0xc0 0x00 0x01 0x01";
     ses.send_line(command).unwrap();
     ses.expect("Write").unwrap();
 }
