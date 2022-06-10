@@ -42,7 +42,7 @@ impl FromStr for Rgb {
 
 impl ToString for Rgb {
     fn to_string(&self) -> String {
-        return format!("0x{:x} 0x{:x} 0x{:x}",self.r,self.g,self.b);
+        format!("0x{:x} 0x{:x} 0x{:x}",self.r,self.g,self.b)
     }
 } 
 
@@ -52,9 +52,12 @@ struct Args {
     /// mac address to write to
     #[clap(short, long)]
     mac: String,
+    /// mac address to write to
+    #[clap(short, long)]
+    setting: String,
     /// value to write
     #[clap(short, long)]
-    value: Rgb,
+    value: Option<Rgb>,
 }
 
 #[tokio::main]
@@ -62,10 +65,18 @@ async fn main() -> Result<(), Error> {
     let args = Args::parse();
     let mac = args.mac;
     let val = args.value;
+    let setting= args.setting;
     let mut kitty = spawn(format!("btgatt-client -d {mac}"))?;
 
     kitty.expect("GATT discovery procedures complete")?;
-    send_static_rgb(kitty, val);
+    
+    match &*setting {
+        // Match a single value
+        "rainbow" => send_rainbow(kitty),
+        "beat" => send_beat(kitty, val.unwrap()),
+        "color" => send_static_rgb(kitty, val.unwrap()),
+        _ => println!("Please provide a proper mode")
+    }
 
     Ok(())
 }
@@ -78,10 +89,20 @@ fn send_static_rgb(mut ses: Session<UnixProcess, PtyStream>, rgb: Rgb) {
     );
     ses.send_line(command).unwrap();
     ses.expect("Write").unwrap();
-}
+}   
 
 fn send_rainbow(mut ses: Session<UnixProcess, PtyStream>) {
     let command = "write-value 0x000d 0xc0 0x00 0x01 0x01";
+    ses.send_line(command).unwrap();
+    ses.expect("Write").unwrap();
+}
+
+fn send_beat(mut ses: Session<UnixProcess, PtyStream>, rgb: Rgb) {
+    dbg!(rgb.to_string());
+    let command = format!(
+        "write-value 0x000d 0xc5 0x00 0x03 {val}",
+        val = rgb.to_string()
+    );
     ses.send_line(command).unwrap();
     ses.expect("Write").unwrap();
 }
